@@ -1,164 +1,147 @@
 "use client";
-import { useState, useEffect } from "react";
-
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+const CITIES = [
+  { value: "Riyadh", label: "الرياض", country: "SA" },
+  { value: "Jeddah", label: "جدة", country: "SA" },
+  { value: "Dammam", label: "الدمام", country: "SA" },
+  { value: "Dubai", label: "دبي", country: "AE" },
+  { value: "Abu Dhabi", label: "أبوظبي", country: "AE" },
+  { value: "Sharjah", label: "الشارقة", country: "AE" },
+  { value: "Kuwait City", label: "الكويت", country: "KW" },
+  { value: "Doha", label: "الدوحة", country: "QA" },
+  { value: "Manama", label: "المنامة", country: "BH" },
+  { value: "Muscat", label: "مسقط", country: "OM" },
+];
+
 export default function Settings() {
+  const [form, setForm] = useState({
+    clinic_name: "", slug: "", phone: "", address: "",
+    booking_url: "", city: "", country: "", vat_number: "", language: "ar",
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [userEmail, setUserEmail] = useState("");
-  const [form, setForm] = useState({
-    clinic_name: "",
-    booking_url: "",
-    phone: "",
-    address: "",
-    language: "sv",
-    slug: "",
-  });
+  const [chatUrl, setChatUrl] = useState("");
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  useEffect(() => { loadSettings(); }, []);
 
   async function loadSettings() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-  
-    setUserEmail(user.email ?? "");
-
     const [{ data: settings }, { data: profile }] = await Promise.all([
       supabase.from("clinic_settings").select("*").eq("user_id", user.id).single(),
       supabase.from("profiles").select("*").eq("id", user.id).single(),
     ]);
-
     if (settings) {
       setForm({
         clinic_name: settings.clinic_name ?? "",
-        booking_url: settings.booking_url ?? "",
+        slug: profile?.slug ?? "",
         phone: settings.phone ?? "",
         address: settings.address ?? "",
-        language: settings.language ?? "sv",
-        slug: profile?.slug ?? "",
+        booking_url: settings.booking_url ?? "",
+        city: settings.city ?? "",
+        country: settings.country ?? "",
+        vat_number: settings.vat_number ?? "",
+        language: settings.language ?? "ar",
       });
+      if (profile?.slug) setChatUrl(`${window.location.origin}/chat/${profile.slug}`);
     }
     setLoading(false);
   }
 
-  async function saveSettings() {
+  async function save() {
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-  const { slug, ...settingsForm } = form;
-
+    const city = CITIES.find(c => c.value === form.city);
     await Promise.all([
       supabase.from("clinic_settings").upsert({
         user_id: user.id,
-        ...settingsForm,
+        clinic_name: form.clinic_name,
+        phone: form.phone,
+        address: form.address,
+        booking_url: form.booking_url,
+        city: form.city,
+        country: city?.country || form.country,
+        vat_number: form.vat_number,
+        vat_rate: city?.country === "AE" ? 5 : 15,
+        language: form.language,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" }),
       supabase.from("profiles").upsert({
         id: user.id,
-        slug: slug.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
-        clinic_name: settingsForm.clinic_name,
+        clinic_name: form.clinic_name,
+        slug: form.slug.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
       }, { onConflict: "id" }),
     ]);
-    setSaving(false);
-    setSaved(true);
+    setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+    setChatUrl(`${window.location.origin}/chat/${form.slug}`);
   }
 
-  if (loading) return (
-    <div className="p-6 text-sm text-gray-400">Loading...</div>
-  );
+  if (loading) return <div style={{ padding: "2rem", color: "#6B7280", direction: "rtl" }}>جارٍ التحميل...</div>;
+
+  const vatRate = CITIES.find(c => c.value === form.city)?.country === "AE" ? "5%" : "15%";
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8">
-     <div className="mb-6 bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-500 mb-1">Inloggad som</p>
-          <p className="text-sm font-medium text-gray-900">{userEmail}</p>
+    <div style={{ fontFamily: "system-ui, sans-serif", direction: "rtl", maxWidth: 640 }}>
+      <h1 style={{ fontSize: "1.4rem", fontWeight: 700, color: "#0F0B2D", marginBottom: "1.5rem" }}>إعدادات العيادة</h1>
+
+      {/* Chat link */}
+      {chatUrl && (
+        <div style={{ background: "#EDE9FF", border: "1px solid #C4B5FD", borderRadius: 12, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
+          <div style={{ fontWeight: 600, fontSize: "0.88rem", marginBottom: "0.4rem" }}>رابط شات العيادة</div>
+          <div style={{ fontSize: "0.82rem", color: "#1B1464", direction: "ltr", background: "white", padding: "0.5rem 0.75rem", borderRadius: 8, wordBreak: "break-all" }}>{chatUrl}</div>
+          <div style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.4rem" }}>شارك هذا الرابط مع مرضاك ليتواصلوا مع هلاجAI</div>
         </div>
-      </div>
-      <h1 className="text-xl font-semibold text-gray-900 mb-1">Klinikens inställningar</h1>
-      <p className="text-sm text-gray-500 mb-8">Denna information används av AI-receptionisten och påminnelser.</p>
+      )}
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+      <div style={{ background: "white", border: "1px solid #EDE9FF", borderRadius: 14, padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <h2 style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0F0B2D", paddingBottom: "0.5rem", borderBottom: "1px solid #EDE9FF" }}>معلومات العيادة</h2>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Klinikens namn</label>
-          <input
-            value={form.clinic_name}
-            onChange={e => setForm({ ...form, clinic_name: e.target.value })}
-            placeholder="e.g. SmileCare Tandläkare"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Bokningslänk</label>
-          <input
-            value={form.booking_url}
-            onChange={e => setForm({ ...form, booking_url: e.target.value })}
-            placeholder="e.g. https://www.bokadirekt.se/your-clinic"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-          />
-          <p className="text-xs text-gray-400 mt-1">Din Bokadirekt, Muntra eller annan bokningssida. AI:n skickar patienter hit.</p>
-        </div>
+        {[
+          { key: "clinic_name", label: "اسم العيادة *", placeholder: "عيادة الابتسامة", type: "text" },
+          { key: "slug", label: "معرف الرابط (بالإنجليزية)", placeholder: "smile-clinic", type: "text", dir: "ltr" },
+          { key: "phone", label: "رقم الهاتف", placeholder: "05xxxxxxxx", type: "tel", dir: "ltr" },
+          { key: "address", label: "العنوان", placeholder: "الحي، الشارع، المدينة", type: "text" },
+          { key: "booking_url", label: "رابط الحجز الخارجي", placeholder: "https://...", type: "url", dir: "ltr" },
+          { key: "vat_number", label: "الرقم الضريبي", placeholder: "رقم التسجيل الضريبي", type: "text", dir: "ltr" },
+        ].map(f => (
+          <div key={f.key}>
+            <label style={{ fontSize: "0.82rem", fontWeight: 500, display: "block", marginBottom: 4, color: "#374151" }}>{f.label}</label>
+            <input type={f.type} placeholder={f.placeholder}
+              value={form[f.key as keyof typeof form]}
+              onChange={e => setForm({ ...form, [f.key]: e.target.value })}
+              dir={f.dir || "rtl"}
+              style={{ width: "100%", padding: "0.6rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none" }} />
+          </div>
+        ))}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Klinikens telefon</label>
-          <input
-            value={form.phone}
-            onChange={e => setForm({ ...form, phone: e.target.value })}
-            placeholder="e.g. 08-123 456 78"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Adress</label>
-          <input
-            value={form.address}
-            onChange={e => setForm({ ...form, address: e.target.value })}
-            placeholder="e.g. Sveavägen 12, Stockholm"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-          />
+          <label style={{ fontSize: "0.82rem", fontWeight: 500, display: "block", marginBottom: 4, color: "#374151" }}>المدينة</label>
+          <select value={form.city} onChange={e => setForm({ ...form, city: e.target.value })}
+            style={{ width: "100%", padding: "0.6rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", background: "white" }}>
+            <option value="">اختر المدينة</option>
+            {CITIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          {form.city && <div style={{ fontSize: "0.72rem", color: "#C9A84C", marginTop: 3 }}>ضريبة القيمة المضافة: {vatRate}</div>}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Standardspråk</label>
-          <select
-            value={form.language}
-            onChange={e => setForm({ ...form, language: e.target.value })}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-          >
-            <option value="sv">Svenska</option>
-            <option value="en">Engelska</option>
+          <label style={{ fontSize: "0.82rem", fontWeight: 500, display: "block", marginBottom: 4, color: "#374151" }}>لغة المساعد الذكي</label>
+          <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })}
+            style={{ width: "100%", padding: "0.6rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", background: "white" }}>
+            <option value="ar">عربي (الافتراضي)</option>
+            <option value="en">English</option>
+            <option value="both">عربي + English</option>
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Din klinik-URL</label>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">vardai.se/chat/</span>
-            <input
-              value={form.slug}
-              onChange={e => setForm({ ...form, slug: e.target.value })}
-              placeholder="din-klinik"
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-            />
-          </div>
-          <p className="text-xs text-gray-400 mt-1">Dela denna länk med dina patienter. Endast bokstäver, siffror och bindestreck.</p>
-        </div>
-
-        <button
-          onClick={saveSettings}
-          disabled={saving}
-          className="w-full text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors" style={{backgroundColor: "#c17f5a"}}
-        >
-          {saving ? "Sparar..." : saved ? "✓ Sparad" : "Spara inställningar"}
+        <button onClick={save} disabled={saving}
+          style={{ background: saving ? "#9CA3AF" : saved ? "#059669" : "#0F0B2D", color: "white", border: "none", borderRadius: 50, padding: "0.75rem", fontWeight: 700, cursor: "pointer", fontSize: "0.9rem", transition: "background 0.2s" }}>
+          {saving ? "جارٍ الحفظ..." : saved ? "✓ تم الحفظ" : "حفظ الإعدادات"}
         </button>
       </div>
     </div>
