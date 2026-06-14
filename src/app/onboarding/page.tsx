@@ -3,13 +3,32 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
-const CLINIC_TYPES = [
-  "Tandläkare",
-  "Fysioterapi",
-  "Estetisk klinik",
-  "Psykolog/Terapeut",
-  "Allmänläkare",
-  "Annat",
+const CITIES = [
+  { value: "Riyadh", label: "الرياض", country: "SA" },
+  { value: "Jeddah", label: "جدة", country: "SA" },
+  { value: "Dammam", label: "الدمام", country: "SA" },
+  { value: "Dubai", label: "دبي", country: "AE" },
+  { value: "Abu Dhabi", label: "أبوظبي", country: "AE" },
+  { value: "Sharjah", label: "الشارقة", country: "AE" },
+  { value: "Kuwait City", label: "الكويت", country: "KW" },
+  { value: "Doha", label: "الدوحة", country: "QA" },
+  { value: "Manama", label: "المنامة", country: "BH" },
+  { value: "Muscat", label: "مسقط", country: "OM" },
+];
+
+const SPECIALTIES = [
+  "طب الأسنان العام",
+  "تقويم الأسنان",
+  "زراعة الأسنان",
+  "طب الأسنان التجميلي",
+  "طب الأطفال",
+  "الجراحة الفموية",
+  "أمراض اللثة",
+  "علاج العصب",
+  "الطب العام",
+  "الجلدية",
+  "النساء والتوليد",
+  "أخرى",
 ];
 
 export default function Onboarding() {
@@ -18,35 +37,44 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     clinic_name: "",
-    clinic_type: "",
-    org_number: "",
+    specialty: "",
+    city: "",
+    country: "",
     phone: "",
     address: "",
     booking_url: "",
+    vat_number: "",
     slug: "",
   });
 
-  async function saveAndContinue() {
-    if (step === 4) {
-      setSaving(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  function handleCityChange(value: string) {
+    const city = CITIES.find(c => c.value === value);
+    setForm({ ...form, city: value, country: city?.country || "" });
+  }
 
-      const slug = form.slug ||
-        form.clinic_name.toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9-]/g, "");
+  function generateSlug(name: string) {
+    return name.toLowerCase()
+      .replace(/[\u0600-\u06FF]/g, c => c)
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9\u0600-\u06FF-]/g, "")
+      .substring(0, 30);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/login"); return; }
+
+      const slug = form.slug || generateSlug(form.clinic_name) || user.id.substring(0, 8);
 
       await Promise.all([
         supabase.from("profiles").upsert({
           id: user.id,
           clinic_name: form.clinic_name,
-          clinic_type: form.clinic_type,
-          org_number: form.org_number,
           slug,
-          trial_started_at: new Date().toISOString(),
           subscription_status: "trial",
-          plan: "growth",
+          plan: "starter",
         }, { onConflict: "id" }),
         supabase.from("clinic_settings").upsert({
           user_id: user.id,
@@ -54,219 +82,174 @@ export default function Onboarding() {
           phone: form.phone,
           address: form.address,
           booking_url: form.booking_url,
-          language: "sv",
+          city: form.city,
+          country: form.country,
+          vat_number: form.vat_number,
+          vat_rate: form.country === "AE" ? 5 : 15,
+          language: "ar",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" }),
+        supabase.from("instructions").upsert({
+          user_id: user.id,
+          content: `أنت مساعد استقبال ذكي لـ ${form.clinic_name} في ${form.city}. تخصصنا: ${form.specialty}.`,
         }, { onConflict: "user_id" }),
       ]);
 
-      setSaving(false);
-     
-
-    // Notify admin of new signup
-      fetch("/api/notify-signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clinic_name: form.clinic_name,
-          org_number: form.org_number,
-          clinic_type: form.clinic_type,
-          email: user?.email,
-        }),
-      }).catch(console.error);
-
-      // Send welcome email
-      fetch("/api/welcome-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: user.email,
-          clinic_name: form.clinic_name,
-          slug,
-        }),
-      }).catch(console.error);
-
       router.push("/dashboard");
-  
-    } else {
-      setStep(step + 1);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
     }
   }
-  
 
-  const canContinue = () => {
-    if (step === 1) return form.clinic_name && form.clinic_type;
-    if (step === 2) return form.org_number;
-    if (step === 3) return form.phone;
-    return true;
-  };
+  const vatRate = form.country === "AE" ? "5%" : form.country ? "15%" : "";
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
+    <div style={{ minHeight: "100vh", background: "#F8F6FF", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem", fontFamily: "'IBM Plex Sans Arabic', system-ui", direction: "rtl" }}>
+      <div style={{ width: "100%", maxWidth: 520, background: "white", borderRadius: 20, padding: "2rem", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", border: "1px solid #EDE9FF" }}>
 
         {/* Header */}
-        <div className="text-center mb-8">
-          <span className="font-bold text-2xl" style={{fontFamily: "Georgia, serif", color: "#5c3d2e"}}>VårdAI</span>
-          <p className="text-sm text-gray-500 mt-1">Konfigurera din klinik</p>
+        <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#0F0B2D" }}>
+            هلاج<span style={{ color: "#C9A84C" }}>AI</span>
+          </div>
+          <div style={{ color: "#6B7280", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+            إعداد عيادتك — خطوة {step} من 3
+          </div>
+          {/* Progress */}
+          <div style={{ display: "flex", gap: 4, marginTop: "1rem", justifyContent: "center" }}>
+            {[1, 2, 3].map(s => (
+              <div key={s} style={{ height: 4, width: 60, borderRadius: 2, background: s <= step ? "#C9A84C" : "#EDE9FF" }} />
+            ))}
+          </div>
         </div>
 
-        {/* Progress */}
-        <div className="flex gap-2 mb-8">
-          {[1, 2, 3, 4].map(i => (
-            <div
-              key={i}
-              className={`flex-1 h-1.5 rounded-full transition-colors ${
-                i <= step ? "bg-[#c17f5a]" : "bg-gray-200"
-              }`}
-            />
-          ))}
-        </div>
+        {/* Step 1 — Basic info */}
+        {step === 1 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h2 style={{ fontWeight: 700, fontSize: "1.1rem" }}>معلومات العيادة الأساسية</h2>
 
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
-
-          {step === 1 && (
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">Om din klinik</h2>
-              <p className="text-sm text-gray-500 mb-5">Grundläggande information om din verksamhet.</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Klinikens namn *</label>
-                  <input
-                    value={form.clinic_name}
-                    onChange={e => setForm({ ...form, clinic_name: e.target.value })}
-                    placeholder="t.ex. SmileCare Tandläkare"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Typ av klinik *</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {CLINIC_TYPES.map(type => (
-                      <button
-                        key={type}
-                        onClick={() => setForm({ ...form, clinic_type: type })}
-                        className={`py-2 px-3 rounded-lg text-sm border transition-colors text-left ${
-                          form.clinic_type === type
-                          ? "border-[#c17f5a] text-[#c17f5a]"
-                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                        }`}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>اسم العيادة *</label>
+              <input value={form.clinic_name} onChange={e => setForm({ ...form, clinic_name: e.target.value, slug: generateSlug(e.target.value) })}
+                placeholder="مثال: عيادة الابتسامة للأسنان"
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none" }} />
             </div>
-          )}
 
-          {step === 2 && (
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">Verifiering</h2>
-              <p className="text-sm text-gray-500 mb-5">Vi verifierar att din klinik är registrerad i Sverige.</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Organisationsnummer *</label>
-                <input
-                  value={form.org_number}
-                  onChange={e => setForm({ ...form, org_number: e.target.value })}
-                  placeholder="XXXXXX-XXXX"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-                />
-                <p className="text-xs text-gray-400 mt-1">Ditt organisationsnummer hittar du på Bolagsverket.</p>
-              </div>
-              <div className="mt-4 rounded-xl p-4" style={{backgroundColor: "#fdf0e8", border: "1px solid #e8d5c4"}}>
-                <p className="text-xs" style={{color: "#c17f5a"}}>Vi granskar din registrering manuellt inom 24 timmar. Du kan börja använda VårdAI direkt medan vi verifierar.</p>
-              </div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>التخصص *</label>
+              <select value={form.specialty} onChange={e => setForm({ ...form, specialty: e.target.value })}
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", background: "white" }}>
+                <option value="">اختر التخصص</option>
+                {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
-          )}
 
-          {step === 3 && (
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">Kontaktuppgifter</h2>
-              <p className="text-sm text-gray-500 mb-5">Patienter ser dessa uppgifter i AI-chatten.</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Telefonnummer *</label>
-                  <input
-                    value={form.phone}
-                    onChange={e => setForm({ ...form, phone: e.target.value })}
-                    placeholder="08-123 456 78"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Adress</label>
-                  <input
-                    value={form.address}
-                    onChange={e => setForm({ ...form, address: e.target.value })}
-                    placeholder="Sveavägen 12, Stockholm"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-                  />
-                </div>
-              </div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>المدينة *</label>
+              <select value={form.city} onChange={e => handleCityChange(e.target.value)}
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", background: "white" }}>
+                <option value="">اختر المدينة</option>
+                {CITIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
             </div>
-          )}
 
-          {step === 4 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-1">Bokningssystem</h2>
-              <p className="text-sm text-gray-500 mb-5">Koppla ditt befintliga bokningssystem.</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Bokningslänk</label>
-                  <input
-                    value={form.booking_url}
-                    onChange={e => setForm({ ...form, booking_url: e.target.value })}
-                    placeholder="https://www.bokadirekt.se/din-klinik"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Din Bokadirekt, Muntra eller annan bokningssida.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Din klinik-URL på VårdAI</label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400 whitespace-nowrap">vardai.se/chat/</span>
-                    <input
-                      value={form.slug}
-                      onChange={e => setForm({ ...form, slug: e.target.value })}
-                      placeholder="din-klinik"
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-[#c17f5a]"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">Lämna tomt för att generera automatiskt från kliniknamnet.</p>
-                </div>
+            {vatRate && (
+              <div style={{ background: "#FFFBF0", border: "1px solid #FDE68A", borderRadius: 8, padding: "0.65rem 0.85rem", fontSize: "0.82rem", color: "#92400E" }}>
+                💡 ضريبة القيمة المضافة في منطقتك: <b>{vatRate}</b> — ستُطبق تلقائياً على الفواتير
               </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 mt-6">
-            {step > 1 && (
-              <button
-                onClick={() => setStep(step - 1)}
-                className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-              >
-                Tillbaka
-              </button>
             )}
-            <button
-              onClick={saveAndContinue}
-              disabled={!canContinue() || saving}
-              className="flex-1 text-white py-2.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors" style={{backgroundColor: "#c17f5a"}}
-            >
-              {saving ? "Sparar..." : step === 4 ? "Kom igång →" : "Fortsätt →"}
+
+            <button onClick={() => setStep(2)} disabled={!form.clinic_name || !form.city}
+              style={{ background: "#0F0B2D", color: "white", padding: "0.75rem", borderRadius: 50, fontWeight: 700, border: "none", cursor: "pointer", opacity: (!form.clinic_name || !form.city) ? 0.5 : 1, marginTop: "0.5rem" }}>
+              التالي ←
             </button>
           </div>
+        )}
 
-          {step === 2 && (
-            <button
-              onClick={() => setStep(3)}
-              className="w-full mt-2 text-sm text-gray-400 hover:text-gray-600"
-            >
-              Hoppa över för nu
-            </button>
-          )}
-        </div>
+        {/* Step 2 — Contact */}
+        {step === 2 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h2 style={{ fontWeight: 700, fontSize: "1.1rem" }}>معلومات التواصل</h2>
 
-        <p className="text-center text-xs text-gray-400 mt-4">Steg {step} av 4</p>
+            <div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>رقم الهاتف</label>
+              <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                placeholder="05xxxxxxxx" dir="ltr"
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", direction: "ltr" }} />
+            </div>
+
+            <div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>العنوان</label>
+              <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })}
+                placeholder="الحي، الشارع..."
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none" }} />
+            </div>
+
+            <div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>رابط الحجز (اختياري)</label>
+              <input value={form.booking_url} onChange={e => setForm({ ...form, booking_url: e.target.value })}
+                placeholder="https://..." dir="ltr"
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", direction: "ltr" }} />
+              <div style={{ fontSize: "0.75rem", color: "#9CA3AF", marginTop: 4 }}>رابط نظام حجزك الحالي إن وجد</div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: "0.85rem", fontWeight: 500, display: "block", marginBottom: 4 }}>الرقم الضريبي (اختياري)</label>
+              <input value={form.vat_number} onChange={e => setForm({ ...form, vat_number: e.target.value })}
+                placeholder="رقم التسجيل في الضريبة" dir="ltr"
+                style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #E5E7EB", borderRadius: 8, fontSize: "0.9rem", outline: "none", direction: "ltr" }} />
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button onClick={() => setStep(1)} style={{ flex: 1, background: "white", color: "#374151", padding: "0.75rem", borderRadius: 50, fontWeight: 600, border: "1.5px solid #E5E7EB", cursor: "pointer" }}>
+                → السابق
+              </button>
+              <button onClick={() => setStep(3)} style={{ flex: 1, background: "#0F0B2D", color: "white", padding: "0.75rem", borderRadius: 50, fontWeight: 700, border: "none", cursor: "pointer" }}>
+                التالي ←
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 — Confirm */}
+        {step === 3 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h2 style={{ fontWeight: 700, fontSize: "1.1rem" }}>مراجعة وتأكيد</h2>
+
+            <div style={{ background: "#F8F6FF", border: "1px solid #EDE9FF", borderRadius: 12, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+              {[
+                { label: "اسم العيادة", value: form.clinic_name },
+                { label: "التخصص", value: form.specialty },
+                { label: "المدينة", value: CITIES.find(c => c.value === form.city)?.label },
+                { label: "الهاتف", value: form.phone || "—" },
+                { label: "ضريبة القيمة المضافة", value: form.country === "AE" ? "5%" : "15%" },
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.88rem" }}>
+                  <span style={{ color: "#6B7280" }}>{item.label}</span>
+                  <span style={{ fontWeight: 600, color: "#0F0B2D" }}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 12, padding: "1rem", fontSize: "0.82rem", color: "#065F46" }}>
+              ✅ رابط شات العيادة الخاص بك سيكون:<br />
+              <b style={{ direction: "ltr", display: "block", marginTop: 4 }}>
+                {typeof window !== "undefined" ? window.location.origin : "https://gulf-saas-ten.vercel.app"}/chat/{form.slug || "your-clinic"}
+              </b>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button onClick={() => setStep(2)} style={{ flex: 1, background: "white", color: "#374151", padding: "0.75rem", borderRadius: 50, fontWeight: 600, border: "1.5px solid #E5E7EB", cursor: "pointer" }}>
+                → السابق
+              </button>
+              <button onClick={save} disabled={saving} style={{ flex: 1, background: "#C9A84C", color: "white", padding: "0.75rem", borderRadius: 50, fontWeight: 700, border: "none", cursor: "pointer", opacity: saving ? 0.7 : 1 }}>
+                {saving ? "جارٍ الحفظ..." : "ابدأ الآن ✓"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

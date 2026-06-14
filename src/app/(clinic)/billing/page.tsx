@@ -1,99 +1,104 @@
 "use client";
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useState } from "react";
+
+const PLANS = [
+  {
+    id: "starter",
+    name: "أساسي",
+    price: 99,
+    currency: "د.إ",
+    features: ["مساعد AI ٢٤/٧", "دعم عربي وإنجليزي", "تنبيه طارئ", "لوحة التحكم", "التقويم الهجري"],
+    highlight: false,
+  },
+  {
+    id: "pro",
+    name: "احترافي",
+    price: 249,
+    currency: "د.إ",
+    features: ["كل مميزات الأساسي", "SMS تلقائي", "جدولة أوقات الصلاة", "فواتير VAT", "تحليلات مفصلة", "Tap Payments"],
+    highlight: true,
+  },
+  {
+    id: "clinic",
+    name: "عيادة",
+    price: 499,
+    currency: "د.إ",
+    features: ["كل مميزات الاحترافي", "متعدد الأطباء", "تخصيص كامل", "مدير حساب مخصص", "ضمان ٩٩.٩٪"],
+    highlight: false,
+  },
+];
 
 export default function Billing() {
-  const [loading, setLoading] = useState(true);
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [profile, setProfile] = useState<{plan: string; subscription_status: string} | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase.from("profiles").select("plan, subscription_status").eq("id", user.id).single();
-      setProfile(data);
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-  async function openPortal() {
-    setPortalLoading(true);
+  async function handleSubscribe(planId: string) {
+    setLoading(planId);
+    setError("");
     try {
-      const res = await fetch("/api/billing-portal", { method: "POST" });
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: planId, email: "" }),
+      });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setError("Tap Payments غير مفعّل بعد. تواصل مع الدعم على hello@aurive.com");
+      }
+    } catch {
+      setError("حدث خطأ. يرجى المحاولة مرة أخرى.");
     } finally {
-      setPortalLoading(false);
+      setLoading(null);
     }
   }
 
-  if (loading) return <div style={{ padding: "40px", color: "#9c7b6b" }}>Laddar...</div>;
-
   return (
-    <div style={{ maxWidth: "600px", margin: "0 auto", padding: "40px 24px" }}>
-      <h1 style={{ fontFamily: "Georgia, serif", fontSize: "24px", color: "#3d2b1f", marginBottom: "8px" }}>
-        Fakturering
-      </h1>
-      <p style={{ color: "#9c7b6b", fontSize: "14px", marginBottom: "32px" }}>
-        Hantera din prenumeration och se fakturor.
-      </p>
+    <div style={{ fontFamily: "'IBM Plex Sans Arabic', system-ui", direction: "rtl" }}>
+      <h1 style={{ fontSize: "1.4rem", fontWeight: 700, marginBottom: "0.5rem", color: "#0F0B2D" }}>الاشتراك والفواتير</h1>
+      <p style={{ color: "#6B7280", marginBottom: "2rem", fontSize: "0.9rem" }}>الشهر الأول مجاني. بدون عقود ملزمة. الدفع عبر Tap Payments.</p>
 
-      <div style={{ backgroundColor: "white", borderRadius: "16px", padding: "24px", border: "1px solid #e8d5c4", marginBottom: "16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <p style={{ fontSize: "12px", color: "#9c7b6b", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Nuvarande plan</p>
-            <p style={{ fontSize: "20px", fontWeight: 600, color: "#3d2b1f", textTransform: "capitalize" }}>
-              {profile?.plan || "Free"}
-            </p>
-          </div>
-          <span style={{
-            fontSize: "12px", padding: "4px 12px", borderRadius: "50px",
-            backgroundColor: profile?.subscription_status === "active" ? "#dcfce7" : profile?.subscription_status === "trial" ? "#fdf0e8" : "#f3f4f6",
-            color: profile?.subscription_status === "active" ? "#16a34a" : profile?.subscription_status === "trial" ? "#c17f5a" : "#6b7280",
-          }}>
-            {profile?.subscription_status === "active" ? "Aktiv" : profile?.subscription_status === "trial" ? "Provperiod" : "Gratis"}
-          </span>
+      {error && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "0.75rem 1rem", marginBottom: "1.5rem", fontSize: "0.85rem", color: "#DC2626" }}>
+          {error}
         </div>
-      </div>
-
-      {profile?.subscription_status === "active" ? (
-        <button
-          onClick={openPortal}
-          disabled={portalLoading}
-          style={{
-            width: "100%", padding: "14px", borderRadius: "12px", border: "none",
-            backgroundColor: "#c17f5a", color: "white", fontSize: "15px",
-            fontWeight: 500, cursor: "pointer", opacity: portalLoading ? 0.7 : 1
-          }}
-        >
-          {portalLoading ? "Laddar..." : "Hantera prenumeration och fakturor →"}
-        </button>
-      ) : (
-        <button
-          onClick={async () => {
-            const res = await fetch("/api/checkout", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ plan: "growth" }),
-            });
-            const data = await res.json();
-            if (data.url) window.location.href = data.url;
-          }}
-          style={{
-            width: "100%", padding: "14px", borderRadius: "12px", border: "none",
-            backgroundColor: "#c17f5a", color: "white", fontSize: "15px",
-            fontWeight: 500, cursor: "pointer"
-          }}
-        >
-          Uppgradera till Growth — 4 500 kr/mån
-        </button>
       )}
 
-      <p style={{ textAlign: "center", fontSize: "12px", color: "#b8a090", marginTop: "16px" }}>
-        Fakturor skickas automatiskt via e-post efter varje betalning.
-      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1.25rem" }}>
+        {PLANS.map(plan => (
+          <div key={plan.id} style={{ background: "white", border: plan.highlight ? "2px solid #C9A84C" : "1px solid #EDE9FF", borderRadius: 16, padding: "1.5rem", position: "relative" }}>
+            {plan.highlight && (
+              <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: "#C9A84C", color: "white", fontSize: "0.72rem", fontWeight: 700, padding: "3px 14px", borderRadius: 99, whiteSpace: "nowrap" }}>
+                الأكثر شعبية
+              </div>
+            )}
+            <h3 style={{ fontWeight: 700, fontSize: "1.05rem", marginBottom: "0.25rem" }}>{plan.name}</h3>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700, color: "#C9A84C", marginBottom: "1rem" }}>
+              {plan.price} <span style={{ fontSize: "0.85rem", color: "#9CA3AF", fontWeight: 400 }}>{plan.currency}/شهر</span>
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, marginBottom: "1.25rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {plan.features.map(f => (
+                <li key={f} style={{ fontSize: "0.82rem", color: "#374151", display: "flex", gap: "0.4rem" }}>
+                  <span style={{ color: "#C9A84C" }}>✓</span> {f}
+                </li>
+              ))}
+            </ul>
+            <button onClick={() => handleSubscribe(plan.id)} disabled={loading === plan.id}
+              style={{ width: "100%", padding: "0.7rem", borderRadius: 50, fontWeight: 700, border: "none", cursor: "pointer", background: plan.highlight ? "#C9A84C" : "#0F0B2D", color: "white", opacity: loading === plan.id ? 0.7 : 1, fontFamily: "'IBM Plex Sans Arabic', system-ui", fontSize: "0.88rem" }}>
+              {loading === plan.id ? "جارٍ التحميل..." : "اشترك الآن"}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: "2rem", background: "#F8F6FF", border: "1px solid #EDE9FF", borderRadius: 12, padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ fontSize: "2rem" }}>💳</div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>الدفع الآمن عبر Tap Payments</div>
+          <div style={{ fontSize: "0.8rem", color: "#6B7280", marginTop: "2px" }}>يدعم مدى، فيزا، ماستركارد — مشفر بالكامل</div>
+        </div>
+      </div>
     </div>
   );
 }
