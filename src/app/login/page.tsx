@@ -68,6 +68,12 @@ export default function Login() {
           )}
         </div>
 
+        {mode === "login" && (
+          <div style={{ textAlign: "center", marginTop: "0.75rem" }}>
+            <Link href="/forgot-password" style={{ fontSize: "0.82rem", color: "#9CA3AF", textDecoration: "none" }}>نسيت كلمة المرور؟</Link>
+          </div>
+        )}
+
         <div style={{ textAlign: "center", marginTop: "1rem" }}>
           <Link href="/" style={{ fontSize: "0.8rem", color: "#9CA3AF", textDecoration: "none" }}>← العودة للرئيسية</Link>
         </div>
